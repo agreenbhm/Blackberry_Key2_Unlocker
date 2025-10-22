@@ -67,7 +67,6 @@ def sleep(ms):
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='Blackberry Key2[LE] Unlocker')
 parser.add_argument('recovery_image', help='Path to the recovery image file')
-parser.add_argument('files_dir', help='Path to the directory containing firmware files')
 args = parser.parse_args()
 
 # Open the USB device
@@ -85,7 +84,7 @@ def bulk_transfer(data, readcount=128, timeout=100):
     try:
         # Write the data to the USB device
         written = device.bulkWrite(endpoint_address_write, data, timeout)
-        print(f"Data written successfully: {written}")
+        print(f"Data written successfully ({written} bytes)")
     except Exception as e:
         print(f"Error writing data: {e}")
     try:
@@ -98,7 +97,7 @@ def bulk_transfer(data, readcount=128, timeout=100):
             # Timeout reached or no more data, stop reading
             pass
         results = read.decode('utf-8', errors='replace')
-        print(f"Data read successfully:\n\n {results}")
+        print(f"Data read successfully ({str(len(read))} bytes):\n\n {results}")
         return results
     except Exception as e:
         print(f"Error reading data: {e}")
@@ -127,14 +126,14 @@ else:
 
 # Send 0x30; unclear purpose
 bulk_transfer(bytes.fromhex('30'))
+print("Note: 'FAILunknown command' can be ignored\n\n")
 sleep(100)
 
 # Send 1MB of zeros to the device
 bulk_transfer(bytes.fromhex('00')*0x100000, timeout=3000)
 
 # Load the appropriate abl firmware file
-fwver_path = f'{args.files_dir}/{fwver}' if args.files_dir else fwver
-with open(f'{fwver_path}', 'rb') as f:
+with open(f'{fwver}', 'rb') as f:
     payload = f.read()
 
 payload = bytearray(payload)
@@ -145,12 +144,14 @@ for addr, val in patch:
 
 # Send the patched payload to the device
 bulk_transfer(payload[:0x68c34], timeout=3000)
+print("Note: 'FAILunknown command' can be ignored")
 sleep(500)
 
 device.close()
 sleep(100)
 
 # Use fastboot to flash the recovery image
+print("Flashing recovery image...")
 fastboot = subprocess.run(
     ['fastboot', 'flash', 'recovery', args.recovery_image],
     capture_output=True,
@@ -159,6 +160,7 @@ fastboot = subprocess.run(
 print(fastboot.stdout)
 
 # Use fastboot to boot recovery image by exploiting patched function
+print("Booting recovery image...")
 fastboot = subprocess.run(
     ['fastboot', 'oem', 'get-flash-status'],
     capture_output=True,
